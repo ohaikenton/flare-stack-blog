@@ -1,10 +1,17 @@
 import type { Config } from "release-it";
 
+const isSkipCi = process.env.SKIP_CI === "1" || process.env.SKIP_CI === "true";
+
+const commitMessage = isSkipCi
+  ? "chore: release v${version} [skip ci]"
+  : "chore: release v${version}";
+
 export default {
   git: {
     commit: true,
     tag: true,
     push: true,
+    commitMessage,
   },
   github: {
     release: true,
