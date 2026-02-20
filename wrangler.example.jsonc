@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "my-blog",
-  "compatibility_date": "2025-10-11",
+  "compatibility_date": "2026-02-17",
   "compatibility_flags": ["nodejs_compat"],
   "main": "./src/server.ts",
   "observability": {
@@ -47,11 +47,6 @@
       "class_name": "CommentModerationWorkflow",
     },
     {
-      "name": "send-email-workflow",
-      "binding": "SEND_EMAIL_WORKFLOW",
-      "class_name": "SendEmailWorkflow",
-    },
-    {
       "name": "scheduled-publish-workflow",
       "binding": "SCHEDULED_PUBLISH_WORKFLOW",
       "class_name": "ScheduledPublishWorkflow",
@@ -63,16 +58,35 @@
         "name": "RATE_LIMITER",
         "class_name": "RateLimiter",
       },
+      {
+        "name": "PASSWORD_HASHER",
+        "class_name": "PasswordHasher",
+      },
     ],
   },
   "ai": {
     "binding": "AI",
     "remote": true,
   },
+  "queues": {
+    "producers": [{ "binding": "QUEUE", "queue": "blog-queue" }],
+    "consumers": [
+      {
+        "queue": "blog-queue",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+      },
+    ],
+  },
   "migrations": [
     {
       "tag": "rate-limiter-v1",
       "new_sqlite_classes": ["RateLimiter"],
+    },
+    {
+      "tag": "password-hasher-v1",
+      "new_sqlite_classes": ["PasswordHasher"],
     },
   ],
   "env": {
@@ -82,6 +96,10 @@
           {
             "name": "RATE_LIMITER",
             "class_name": "RateLimiter",
+          },
+          {
+            "name": "PASSWORD_HASHER",
+            "class_name": "PasswordHasher",
           },
         ],
       },
@@ -112,16 +130,14 @@
           "class_name": "CommentModerationWorkflow",
         },
         {
-          "name": "send-email-workflow",
-          "binding": "SEND_EMAIL_WORKFLOW",
-          "class_name": "SendEmailWorkflow",
-        },
-        {
           "name": "scheduled-publish-workflow",
           "binding": "SCHEDULED_PUBLISH_WORKFLOW",
           "class_name": "ScheduledPublishWorkflow",
         },
       ],
+      "queues": {
+        "producers": [{ "binding": "QUEUE", "queue": "blog-queue" }],
+      },
     },
   },
 }

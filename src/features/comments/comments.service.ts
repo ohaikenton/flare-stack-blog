@@ -185,8 +185,9 @@ export async function createComment(
         }),
       );
 
-      await context.env.SEND_EMAIL_WORKFLOW.create({
-        params: {
+      await context.env.QUEUE.send({
+        type: "EMAIL",
+        data: {
           to: ADMIN_EMAIL,
           subject: `[新评论] ${post.title}`,
           html: emailHtml,
@@ -268,6 +269,7 @@ export async function getAllComments(
 export async function moderateComment(
   context: DbContext,
   data: ModerateCommentInput,
+  moderatorUserId?: string,
 ) {
   const comment = await CommentRepo.findCommentById(context.db, data.id);
 
@@ -299,6 +301,7 @@ export async function moderateComment(
           content: comment.content,
         },
         post: { slug: post.slug, title: post.title },
+        skipNotifyUserId: moderatorUserId,
       });
     }
   }

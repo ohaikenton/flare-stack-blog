@@ -459,16 +459,16 @@ describe("CommentService", () => {
       ).not.toHaveBeenCalled();
     });
 
-    it("should trigger SEND_EMAIL_WORKFLOW for admin notification on new root comment", async () => {
+    it("should enqueue admin notification email on new root comment", async () => {
       await CommentService.createComment(userContext, {
         postId,
         content: createCommentContent("New root comment for notification"),
       });
 
-      // Email workflow should be triggered for admin notification
-      expect(userContext.env.SEND_EMAIL_WORKFLOW.create).toHaveBeenCalledWith(
+      expect(userContext.env.QUEUE.send).toHaveBeenCalledWith(
         expect.objectContaining({
-          params: expect.objectContaining({
+          type: "EMAIL",
+          data: expect.objectContaining({
             to: "admin@example.com",
             subject: expect.stringContaining("Test Post"),
           }),
@@ -476,7 +476,7 @@ describe("CommentService", () => {
       );
     });
 
-    it("should trigger SEND_EMAIL_WORKFLOW when admin replies to a user comment", async () => {
+    it("should enqueue reply notification email when admin replies to a user comment", async () => {
       const rootComment = unwrap(
         await CommentService.createComment(userContext, {
           postId,
@@ -489,7 +489,7 @@ describe("CommentService", () => {
       });
 
       // Clear mocks to isolate the admin reply notification
-      vi.mocked(adminContext.env.SEND_EMAIL_WORKFLOW.create).mockClear();
+      vi.mocked(adminContext.env.QUEUE.send).mockClear();
 
       // Admin replies to the user's comment
       await CommentService.createComment(adminContext, {
@@ -499,10 +499,10 @@ describe("CommentService", () => {
         replyToCommentId: rootComment.id,
       });
 
-      // SEND_EMAIL_WORKFLOW should be called for the reply notification
-      expect(adminContext.env.SEND_EMAIL_WORKFLOW.create).toHaveBeenCalledWith(
+      expect(adminContext.env.QUEUE.send).toHaveBeenCalledWith(
         expect.objectContaining({
-          params: expect.objectContaining({
+          type: "EMAIL",
+          data: expect.objectContaining({
             to: "user@example.com",
             subject: expect.stringContaining("回复"),
           }),
@@ -519,7 +519,7 @@ describe("CommentService", () => {
       );
 
       // Clear mocks
-      vi.mocked(adminContext.env.SEND_EMAIL_WORKFLOW.create).mockClear();
+      vi.mocked(adminContext.env.QUEUE.send).mockClear();
 
       // Admin replies to own comment
       await CommentService.createComment(adminContext, {
@@ -530,12 +530,10 @@ describe("CommentService", () => {
       });
 
       // No notification should be sent (self-reply)
-      expect(
-        adminContext.env.SEND_EMAIL_WORKFLOW.create,
-      ).not.toHaveBeenCalled();
+      expect(adminContext.env.QUEUE.send).not.toHaveBeenCalled();
     });
 
-    it("should trigger reply notification when manually approving a reply comment", async () => {
+    it("should skip reply notification when moderator is the reply-to author", async () => {
       const rootComment = unwrap(
         await CommentService.createComment(adminContext, {
           postId,
@@ -554,18 +552,52 @@ describe("CommentService", () => {
       );
 
       // Clear mocks to isolate the moderation notification
-      vi.mocked(adminContext.env.SEND_EMAIL_WORKFLOW.create).mockClear();
+      vi.mocked(adminContext.env.QUEUE.send).mockClear();
 
-      // Admin manually approves the reply
+      // Admin manually approves the reply (admin is both moderator and reply-to author)
+      await CommentService.moderateComment(
+        adminContext,
+        { id: reply.id, status: "published" },
+        adminContext.session.user.id,
+      );
+
+      // No notification — moderator already read the comment when approving
+      expect(adminContext.env.QUEUE.send).not.toHaveBeenCalled();
+    });
+
+    it("should trigger reply notification when moderator is not the reply-to author", async () => {
+      // Admin creates a root comment
+      const rootComment = unwrap(
+        await CommentService.createComment(adminContext, {
+          postId,
+          content: createCommentContent("Admin's root comment"),
+        }),
+      );
+
+      // User replies to admin's comment (goes to verifying status)
+      const reply = unwrap(
+        await CommentService.createComment(userContext, {
+          postId,
+          content: createCommentContent("User reply to admin"),
+          rootId: rootComment.id,
+          replyToCommentId: rootComment.id,
+        }),
+      );
+
+      // Clear mocks to isolate
+      vi.mocked(adminContext.env.QUEUE.send).mockClear();
+
+      // Admin approves — but without passing moderatorUserId (simulating no skip)
       await CommentService.moderateComment(adminContext, {
         id: reply.id,
         status: "published",
       });
 
-      // Reply notification should have been sent to the admin (reply-to author)
-      expect(adminContext.env.SEND_EMAIL_WORKFLOW.create).toHaveBeenCalledWith(
+      // Notification should be sent to the admin (reply-to author) since no moderatorUserId
+      expect(adminContext.env.QUEUE.send).toHaveBeenCalledWith(
         expect.objectContaining({
-          params: expect.objectContaining({
+          type: "EMAIL",
+          data: expect.objectContaining({
             to: "admin@example.com",
             subject: expect.stringContaining("回复"),
           }),
